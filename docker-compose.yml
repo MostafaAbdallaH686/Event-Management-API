@@ -1,0 +1,52 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: bonita-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: bonita
+    ports:
+      - "3307:3306"
+    networks:
+      - bonita-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bonita-api
+    depends_on:
+      - mysql
+    environment:
+      DATABASE_URL: mysql://root:root@mysql:3306/bonita
+      NODE_ENV: development
+      PORT: 8080
+      JWT_SECRET: secret
+      JWT_REFRESH_SECRET: secret2
+      MAIL_DISABLE: true
+      APP_BASE_URL: http://bonita
+    ports:
+      - "80:8080"
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - bonita-network
+    restart: always
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+      - |
+        echo "Waiting for MySQL to be ready..."
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+          if npx prisma db pull; then
+            echo "MySQL is ready!"
+            break
+          fi
+          echo "MySQL not ready, waiting 30 seconds... (attempt $$i/10)"
+          sleep 30
+        done
+        npx prisma migrate deploy
+        node src/index.js
+
+networks:
+  bonita-network:
+    driver: bridge

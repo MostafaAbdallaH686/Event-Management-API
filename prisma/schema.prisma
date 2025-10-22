@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model categories {
+  id     String   @id @db.Char(36)
+  name   String   @unique(map: "name")
+  events events[]
+}
+
+model events {
+  id                   String                 @id @db.Char(36)
+  title                String                 @db.VarChar(255)
+  description          String                 @db.Text
+  dateTime             DateTime
+  location             String                 @db.VarChar(255)
+  maxAttendees         Int
+  status               events_status          @default(SCHEDULED)
+  paymentRequired      Boolean                @default(false)
+  organizerId          String                 @db.Char(36)
+  categoryId           String                 @db.Char(36)
+  createdAt            DateTime               @default(now())
+  imageUrl             String?                @db.VarChar(2048)
+  thumbnailUrl         String?                @db.VarChar(2048)
+  categories           categories             @relation(fields: [categoryId], references: [id], map: "fk_events_category")
+  organizer            users                  @relation("EventOrganizer", fields: [organizerId], references: [id], map: "fk_events_organizer")
+  notifications        notifications[]
+  payment_transactions payment_transactions[]
+  registrations        registrations[]
+
+  @@index([categoryId], map: "idx_events_category")
+  @@index([organizerId], map: "idx_events_organizer")
+}
+
+model notifications {
+  id          String   @id @db.Char(36)
+  userId      String   @db.Char(36)
+  eventId     String?  @db.Char(36)
+  message     String   @db.Text
+  createdAt   DateTime @default(now())
+  organizerId String   @db.Char(36)
+  events      events?  @relation(fields: [eventId], references: [id], map: "fk_notif_event")
+  organizer   users    @relation("NotificationOrganizer", fields: [organizerId], references: [id], map: "fk_notif_organizer")
+  users       users    @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_notif_user")
+
+  @@index([eventId], map: "idx_notif_event")
+  @@index([userId], map: "idx_notif_user")
+  @@index([organizerId], map: "fk_notif_organizer")
+}
+
+model payment_transactions {
+  id              String                      @id @db.Char(36)
+  userId          String                      @db.Char(36)
+  eventId         String                      @db.Char(36)
+  amount          Float
+  status          payment_transactions_status
+  transactionDate DateTime                    @default(now())
+  provider        String                      @db.VarChar(50)
+  providerRef     String?                     @db.VarChar(255)
+  events          events                      @relation(fields: [eventId], references: [id], onDelete: Cascade, map: "fk_tx_event")
+  users           users                       @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_tx_user")
+
+  @@index([eventId], map: "idx_tx_event")
+  @@index([userId], map: "idx_tx_user")
+}
+
+model registrations {
+  id            String                      @id @db.Char(36)
+  userId        String                      @db.Char(36)
+  eventId       String                      @db.Char(36)
+  paymentStatus registrations_paymentStatus @default(PENDING)
+  createdAt     DateTime                    @default(now())
+  events        events                      @relation(fields: [eventId], references: [id], onDelete: Cascade, map: "fk_reg_event")
+  users         users                       @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_reg_user")
+
+  @@unique([userId, eventId], map: "user_event_unique")
+  @@index([eventId], map: "idx_reg_event")
+  @@index([userId], map: "idx_reg_user")
+}
+model RefreshToken {
+  id        String   @id @db.Char(36)
+  token     String   @unique @db.VarChar(500)
+  userId    String   @db.Char(36)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  user users @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([token])
+}
+
+
+model users {
+  id                     String                 @id @db.Char(36)
+  username               String                 @unique(map: "username")
+  email                  String                 @unique(map: "email")
+  passwordHash           String                 @db.VarChar(255)
+  role                   users_role             @default(ATTENDEE)
+  createdAt              DateTime               @default(now())
+  avatarUrl              String?                @db.VarChar(2048)
+  bio                    String?                @db.Text
+  fullName               String?                @db.VarChar(255)
+  location               String?                @db.VarChar(255)
+  phone                  String?                @db.VarChar(20)
+  updatedAt              DateTime               @updatedAt
+  website                String?                @db.VarChar(255)
+  organizedEvents        events[]               @relation("EventOrganizer")
+  organizedNotifications notifications[]        @relation("NotificationOrganizer")
+  refreshTokens          RefreshToken[]
+  notifications          notifications[]
+  payment_transactions   payment_transactions[]
+  registrations          registrations[]
+}
+
+enum registrations_paymentStatus {
+  PAID
+  PENDING
+  FAILED
+}
+
+enum payment_transactions_status {
+  SUCCESS
+  FAILED
+}
+
+enum users_role {
+  ADMIN
+  ORGANIZER
+  ATTENDEE
+}
+
+enum events_status {
+  SCHEDULED
+  COMPLETED
+  CANCELED
+}
