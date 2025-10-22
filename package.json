@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js",
     "prisma:pull": "prisma db pull",
     "prisma:generate": "prisma generate",
-    "db:smoke": "node scripts/db-smoke.js"
+    "db:smoke": "node scripts/db-smoke.js",
+    "build": "npx prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^6.17.1",
