@@ -101,20 +101,21 @@ model users {
   organizedNotifications notifications[]        @relation("NotificationOrganizer")
   notifications          notifications[]
   payment_transactions   payment_transactions[]
-  refreshtoken           refreshtoken[]
+  refreshTokens          RefreshToken[]
   registrations          registrations[]
 }
 
-model refreshtoken {
+model RefreshToken {
   id        String   @id @db.Char(36)
-  token     String   @unique(map: "RefreshToken_token_key") @db.VarChar(500)
+  token     String   @unique @db.VarChar(500)
   userId    String   @db.Char(36)
   expiresAt DateTime
   createdAt DateTime @default(now())
-  users     users    @relation(fields: [userId], references: [id], onDelete: Cascade, map: "RefreshToken_userId_fkey")
-
-  @@index([token], map: "RefreshToken_token_idx")
-  @@index([userId], map: "RefreshToken_userId_idx")
+  
+  user users @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([token])
 }
 
 enum registrations_paymentStatus {
