@@ -13,36 +13,105 @@ const router = Router();
 // GET all events
 router.get('/', async (req, res, next) => {
   try {
-    const { categoryId, status, organizerId, page = 1, limit = 10 } = req.query;
+    const { 
+      categoryId, 
+      status, 
+      organizerId, 
+      search,      
+      upcoming,    
+      popular,     
+      page = 1, 
+      limit = 10 
+    } = req.query;
     
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    
+    // Build where clause
     const where = {};
+    
     if (categoryId) where.categoryId = categoryId;
     if (status) where.status = status;
     if (organizerId) where.organizerId = organizerId;
-
-    const events = await prisma.events.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip: (parseInt(page) - 1) * parseInt(limit),
-      take: parseInt(limit),
-      include: {
-        categories: { select: { id: true, name: true } },
-        organizer: { select: { id: true, username: true } },
-        _count: { select: { registrations: true } }
-      }
-    });
     
-    const total = await prisma.events.count({ where });
+    //  Search by title (case-insensitive)
+    // MySQL uses case-insensitive collation by default
+    if (search) {
+      where.title = {
+        contains: search
+      };
+    }
     
-    res.json({
-      events,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / parseInt(limit))
-      }
-    });
+    // New filter: Upcoming events only
+    if (upcoming === 'true') {
+      where.dateTime = {
+        gte: new Date()
+      };
+    }
+    
+    // Build orderBy clause
+    let orderBy = { createdAt: 'desc' };  // Default ordering
+    
+    // For popular events, we'll fetch all matching events and sort in memory
+    // This is acceptable for reasonable dataset sizes
+    if (popular === 'true') {
+      // Get all events matching the filters
+      const allEvents = await prisma.events.findMany({
+        where,
+        include: {
+          categories: { select: { id: true, name: true } },
+          organizer: { select: { id: true, username: true } },
+          _count: { select: { registrations: true } }
+        }
+      });
+      
+      // Sort by registration count (descending)
+      allEvents.sort((a, b) => b._count.registrations - a._count.registrations);
+      
+      // Apply pagination
+      const events = allEvents.slice(
+        (pageNum - 1) * limitNum,
+        pageNum * limitNum
+      );
+      
+      res.json({
+        events,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: allEvents.length,
+          pages: Math.ceil(allEvents.length / limitNum)
+        }
+      });
+      
+    } else {
+      // Regular query without popularity sorting
+      const [events, total] = await Promise.all([
+        prisma.events.findMany({
+          where,
+          orderBy,
+          skip: (pageNum - 1) * limitNum,
+          take: limitNum,
+          include: {
+            categories: { select: { id: true, name: true } },
+            organizer: { select: { id: true, username: true } },
+            _count: { select: { registrations: true } }
+          }
+        }),
+        prisma.events.count({ where })
+      ]);
+      
+      res.json({
+        events,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages: Math.ceil(total / limitNum)
+        }
+      });
+    }
+    
   } catch (error) {
     next(error);
   }

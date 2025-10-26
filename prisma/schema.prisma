@@ -82,19 +82,6 @@ model registrations {
   @@index([eventId], map: "idx_reg_event")
   @@index([userId], map: "idx_reg_user")
 }
-model RefreshToken {
-  id        String   @id @db.Char(36)
-  token     String   @unique @db.VarChar(500)
-  userId    String   @db.Char(36)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  
-  user users @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([token])
-}
-
 
 model users {
   id                     String                 @id @db.Char(36)
@@ -112,10 +99,22 @@ model users {
   website                String?                @db.VarChar(255)
   organizedEvents        events[]               @relation("EventOrganizer")
   organizedNotifications notifications[]        @relation("NotificationOrganizer")
-  refreshTokens          RefreshToken[]
   notifications          notifications[]
   payment_transactions   payment_transactions[]
+  refreshtoken           refreshtoken[]
   registrations          registrations[]
+}
+
+model refreshtoken {
+  id        String   @id @db.Char(36)
+  token     String   @unique(map: "RefreshToken_token_key") @db.VarChar(500)
+  userId    String   @db.Char(36)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  users     users    @relation(fields: [userId], references: [id], onDelete: Cascade, map: "RefreshToken_userId_fkey")
+
+  @@index([token], map: "RefreshToken_token_idx")
+  @@index([userId], map: "RefreshToken_userId_idx")
 }
 
 enum registrations_paymentStatus {
