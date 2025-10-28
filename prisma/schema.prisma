@@ -8,9 +8,10 @@ datasource db {
 }
 
 model categories {
-  id     String   @id @db.Char(36)
-  name   String   @unique(map: "name")
-  events events[]
+  id               String                     @id @db.Char(36)
+  name             String                     @unique(map: "name")
+  events           events[]
+  favoritedByUsers user_favorite_categories[]
 }
 
 model events {
@@ -84,25 +85,26 @@ model registrations {
 }
 
 model users {
-  id                     String                 @id @db.Char(36)
-  username               String                 @unique(map: "username")
-  email                  String                 @unique(map: "email")
-  passwordHash           String                 @db.VarChar(255)
-  role                   users_role             @default(ATTENDEE)
-  createdAt              DateTime               @default(now())
-  avatarUrl              String?                @db.VarChar(2048)
-  bio                    String?                @db.Text
-  fullName               String?                @db.VarChar(255)
-  location               String?                @db.VarChar(255)
-  phone                  String?                @db.VarChar(20)
-  updatedAt              DateTime               @updatedAt
-  website                String?                @db.VarChar(255)
-  organizedEvents        events[]               @relation("EventOrganizer")
-  organizedNotifications notifications[]        @relation("NotificationOrganizer")
+  id                     String                     @id @db.Char(36)
+  username               String                     @unique(map: "username")
+  email                  String                     @unique(map: "email")
+  passwordHash           String                     @db.VarChar(255)
+  role                   users_role                 @default(ATTENDEE)
+  createdAt              DateTime                   @default(now())
+  avatarUrl              String?                    @db.VarChar(2048)
+  bio                    String?                    @db.Text
+  fullName               String?                    @db.VarChar(255)
+  location               String?                    @db.VarChar(255)
+  phone                  String?                    @db.VarChar(20)
+  updatedAt              DateTime                   @updatedAt
+  website                String?                    @db.VarChar(255)
+  refreshTokens          RefreshToken[]
+  organizedEvents        events[]                   @relation("EventOrganizer")
+  organizedNotifications notifications[]            @relation("NotificationOrganizer")
   notifications          notifications[]
   payment_transactions   payment_transactions[]
-  refreshTokens          RefreshToken[]
   registrations          registrations[]
+  favoriteCategories     user_favorite_categories[]
 }
 
 model RefreshToken {
@@ -111,11 +113,23 @@ model RefreshToken {
   userId    String   @db.Char(36)
   expiresAt DateTime
   createdAt DateTime @default(now())
-  
-  user users @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  user      users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([token])
+}
+
+model user_favorite_categories {
+  id         String     @id @db.Char(36)
+  userId     String     @db.Char(36)
+  categoryId String     @db.Char(36)
+  createdAt  DateTime   @default(now())
+  category   categories @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  user       users      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId])
+  @@index([userId])
+  @@index([categoryId])
 }
 
 enum registrations_paymentStatus {

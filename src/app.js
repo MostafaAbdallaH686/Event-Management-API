@@ -11,6 +11,7 @@ import registrationRoutes from './routes/registrations.js';
 import paymentRoutes from './routes/payments.js';
 import notificationRoutes from './routes/notifications.js';
 import profileRoutes from './routes/profile.js';
+import categoriesRouter from './routes/categories.js';  
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,7 +45,7 @@ export function createApp() {
   app.use('/api/registrations', registrationRoutes);
   app.use('/api/payments', paymentRoutes);
   app.use('/api/notifications', notificationRoutes);
-
+  app.use('/api/categories', categoriesRouter); 
   // 404 handler - MUST BE AFTER all routes
   app.use((req, res) => {
     res.status(404).json({ message: 'Route not found' });

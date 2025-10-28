@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 import prisma from '../prisma.js';
 import { authRequired } from '../middleware/auth.js';
@@ -9,11 +10,9 @@ import path from 'path';
 
 const router = Router();
 
-// GET /api/profile/me - Get the current logged-in user's full profile
+// GET /api/profile/me - Get the current logged-in user's full profile with favorites
 router.get('/me', authRequired, async (req, res, next) => {
   try {
-    // The 'authRequired' middleware gives us req.user.id.
-    // We use that ID to fetch the full profile with all the details you want.
     const userProfile = await prisma.users.findUnique({
       where: { id: req.user.id },
       select: {
@@ -25,6 +24,7 @@ router.get('/me', authRequired, async (req, res, next) => {
         avatarUrl: true,
         location: true,
         website: true,
+        phone: true,
         role: true,
         createdAt: true,
         updatedAt: true,
@@ -34,6 +34,16 @@ router.get('/me', authRequired, async (req, res, next) => {
             registrations: true,
           },
         },
+        favoriteCategories: {
+          include: {
+            category: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        }
       },
     });
 
@@ -41,12 +51,17 @@ router.get('/me', authRequired, async (req, res, next) => {
       return res.status(404).json({ message: 'User profile not found.' });
     }
 
-    res.json(userProfile);
+    // Format the response
+    const formattedProfile = {
+      ...userProfile,
+      favoriteCategories: userProfile.favoriteCategories.map(fc => fc.category)
+    };
+
+    res.json(formattedProfile);
   } catch (error) {
     next(error);
   }
 });
-
 // GET /api/profile/user/:id - Get a public user profile by their ID
 router.get('/user/:id', async (req, res, next) => {
   try {
@@ -143,6 +158,174 @@ router.put('/me', authRequired, uploadAvatar, processAvatar, async (req, res, ne
   }
 });
 
+
+// PATCH update user profile including favorite categories
+router.patch('/profile', authRequired, async (req, res, next) => {
+  try {
+    const { 
+      fullName, 
+      bio, 
+      location, 
+      phone, 
+      website,
+      favoriteCategories // Array of category IDs
+    } = req.body;
+
+    const updateData = {};
+    
+    // Add basic fields to update
+    if (fullName !== undefined) updateData.fullName = fullName;
+    if (bio !== undefined) updateData.bio = bio;
+    if (location !== undefined) updateData.location = location;
+    if (phone !== undefined) updateData.phone = phone;
+    if (website !== undefined) updateData.website = website;
+
+    // Handle favorite categories update
+    if (favoriteCategories !== undefined) {
+      if (!Array.isArray(favoriteCategories)) {
+        return res.status(400).json({ message: 'favoriteCategories must be an array' });
+      }
+
+      // Verify all categories exist
+      if (favoriteCategories.length > 0) {
+        const categories = await prisma.categories.findMany({
+          where: {
+            id: { in: favoriteCategories }
+          }
+        });
+
+        if (categories.length !== favoriteCategories.length) {
+          return res.status(400).json({ message: 'One or more categories not found' });
+        }
+      }
+
+      // Update favorite categories in a transaction
+      await prisma.$transaction(async (tx) => {
+        // Remove all existing favorites
+        await tx.user_favorite_categories.deleteMany({
+          where: { userId: req.user.id }
+        });
+
+        // Add new favorites
+        if (favoriteCategories.length > 0) {
+          await tx.user_favorite_categories.createMany({
+            data: favoriteCategories.map(categoryId => ({
+              id: randomUUID(),
+              userId: req.user.id,
+              categoryId
+            }))
+          });
+        }
+      });
+    }
+
+    // Update user profile
+    const updatedUser = await prisma.users.update({
+      where: { id: req.user.id },
+      data: updateData,
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        fullName: true,
+        bio: true,
+        location: true,
+        phone: true,
+        website: true,
+        avatarUrl: true,
+        role: true,
+        updatedAt: true,
+        favoriteCategories: {
+          include: {
+            category: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Format the response
+    const formattedUser = {
+      ...updatedUser,
+      favoriteCategories: updatedUser.favoriteCategories.map(fc => fc.category)
+    };
+
+    res.json({
+      message: 'Profile updated successfully',
+      user: formattedUser
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET events from user's favorite categories
+router.get('/events/recommended', authRequired, async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+
+    // Get user's favorite categories
+    const favoriteCategories = await prisma.user_favorite_categories.findMany({
+      where: { userId: req.user.id },
+      select: { categoryId: true }
+    });
+
+    const categoryIds = favoriteCategories.map(fc => fc.categoryId);
+
+    if (categoryIds.length === 0) {
+      return res.json({
+        message: 'No favorite categories set. Add some categories to get recommendations!',
+        events: [],
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: 0,
+          pages: 0
+        }
+      });
+    }
+
+    // Get events from favorite categories
+    const where = {
+      categoryId: { in: categoryIds },
+      status: 'SCHEDULED',
+      dateTime: { gte: new Date() } // Only upcoming events
+    };
+
+    const [events, total] = await Promise.all([
+      prisma.events.findMany({
+        where,
+        orderBy: { dateTime: 'asc' },
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum,
+        include: {
+          categories: { select: { id: true, name: true } },
+          organizer: { select: { id: true, username: true } },
+          _count: { select: { registrations: true } }
+        }
+      }),
+      prisma.events.count({ where })
+    ]);
+
+    res.json({
+      events,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 // POST /api/profile/change-password - Change the user's password
 router.post('/change-password', authRequired, async (req, res, next) => {
   try {
