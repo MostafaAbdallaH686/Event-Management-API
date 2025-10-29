@@ -79,6 +79,141 @@ router.post('/login', async (req, res, next) => {
     next(err);
   }
 });
+// POST /api/auth/google
+router.post('/google', async (req, res, next) => {
+  try {
+    const { idToken } = req.body;
+    
+    if (!idToken) {
+      return res.status(400).json({ message: 'ID token is required' });
+    }
+    
+    // Verify Google token
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+    
+    // Find or create user
+    let user = await prisma.users.findUnique({
+      where: { email: email.toLowerCase() }
+    });
+    
+    if (!user) {
+      // Create new user
+      user = await prisma.users.create({
+        data: {
+          email: email.toLowerCase(),
+          username: name || email.split('@')[0],
+          googleId,
+          profilePicture: picture,
+          role: 'ATTENDEE',
+          emailVerified: true
+        }
+      });
+    } else if (!user.googleId) {
+      // Link Google to existing account
+      user = await prisma.users.update({
+        where: { id: user.id },
+        data: { 
+          googleId,
+          emailVerified: true,
+          profilePicture: user.profilePicture || picture
+        }
+      });
+    }
+    
+    // Generate tokens
+    const { accessToken, refreshToken } = generateTokens(user);
+    
+    res.json({
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        profilePicture: user.profilePicture
+      }
+    });
+  } catch (error) {
+    console.error('Google auth error:', error);
+    next(error);
+  }
+});
+
+// POST /api/auth/facebook
+router.post('/facebook', async (req, res, next) => {
+  try {
+    const { accessToken } = req.body;
+    
+    if (!accessToken) {
+      return res.status(400).json({ message: 'Access token is required' });
+    }
+    
+    // Verify Facebook token
+    const fbResponse = await axios.get(
+      `https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${accessToken}`
+    );
+    
+    const { id: facebookId, email, name, picture } = fbResponse.data;
+    
+    if (!email) {
+      return res.status(400).json({ 
+        message: 'Email permission is required' 
+      });
+    }
+    
+    // Find or create user
+    let user = await prisma.users.findUnique({
+      where: { email: email.toLowerCase() }
+    });
+    
+    if (!user) {
+      user = await prisma.users.create({
+        data: {
+          email: email.toLowerCase(),
+          username: name || email.split('@')[0],
+          facebookId,
+          profilePicture: picture?.data?.url,
+          role: 'ATTENDEE',
+          emailVerified: true
+        }
+      });
+    } else if (!user.facebookId) {
+      user = await prisma.users.update({
+        where: { id: user.id },
+        data: { 
+          facebookId,
+          emailVerified: true,
+          profilePicture: user.profilePicture || picture?.data?.url
+        }
+      });
+    }
+    
+    // Generate tokens
+    const { accessToken: jwtAccessToken, refreshToken } = generateTokens(user);
+    
+    res.json({
+      accessToken: jwtAccessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        profilePicture: user.profilePicture
+      }
+    });
+  } catch (error) {
+    console.error('Facebook auth error:', error);
+    next(error);
+  }
+});
 
 // REFRESH TOKEN
 router.post('/refresh', async (req, res, next) => {

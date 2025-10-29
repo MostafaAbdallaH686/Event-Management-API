@@ -88,9 +88,12 @@ model users {
   id                     String                     @id @db.Char(36)
   username               String                     @unique(map: "username")
   email                  String                     @unique(map: "email")
-  passwordHash           String                     @db.VarChar(255)
+  passwordHash           String?                    @db.VarChar(255)
   role                   users_role                 @default(ATTENDEE)
   createdAt              DateTime                   @default(now())
+  // OAuth fields
+  googleId        String?  @unique
+  facebookId      String?  @unique
   avatarUrl              String?                    @db.VarChar(2048)
   bio                    String?                    @db.Text
   fullName               String?                    @db.VarChar(255)
