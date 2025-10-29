@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma from '../prisma.js';
+import axios from 'axios'; 
+import { OAuth2Client } from 'google-auth-library'; 
 import { registerSchema, loginSchema } from '../validations/auth.js';
 import { authRequired } from '../middleware/auth.js';
 import {
@@ -13,6 +15,7 @@ import {
   revokeAllUserTokens,
 } from '../services/tokenService.js';
 import { randomUUID } from 'crypto';
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const router = Router();
 
